@@ -1,0 +1,42 @@
+pipeline {
+    agent { label 'agent' }
+
+    environment {
+        DOCKER_REGISTRY = "**.**.**.**:5000" // Harbor Container Registry adresi
+        DOCKER_REGISTRY_USERNAME = "**" // Harbor kullanıcı adı
+        DOCKER_REGISTRY_PASSWORD = "**!" // Harbor parolası
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                // GitHub deposunu çek
+                checkout scmGit(branches: [[name: '*/development']], extensions: [], userRemoteConfigs: [[credentialsId: '4a9668bf-abc7-4ff1-8d09-3d5ed2cf1f97', url: 'https://github.com/renaultdms/atlas.git']])
+            }
+        }
+        stage('Build and Push Docker Images') {
+            steps {
+                script {
+                    // Her servis için Dockerfile yollarını ve imaj adlarını belirtin
+                    def services = [
+                        ['name': 'webgateway', 'dockerfilePath': './Gateways/**.**/Dockerfile'],
+                        ['name': 'webaggregator', 'dockerfilePath': './Gateways/**.**/Dockerfile'],
+                        ['name': 'authapi', 'dockerfilePath': './**/Auth/***.API/Dockerfile'],
+                        ['name': 'hrapi', 'dockerfilePath': './**/**/**.API/Dockerfile']
+                        // İhtiyacınıza göre diğer servisleri ekleyin
+                    ]
+
+                    // Her bir servis için Docker imajlarını derle ve Harbor'a it
+                    services.each { service ->
+                        def serviceName = service['name']
+                        def dockerfilePath = service['dockerfilePath']
+                        def imageTag = "${DOCKER_REGISTRY}/library/${serviceName}:latest"
+                        sh "docker login -u ${DOCKER_REGISTRY_USERNAME} -p ${DOCKER_REGISTRY_PASSWORD} ${DOCKER_REGISTRY}"
+                        sh "docker build -t ${imageTag} -f ${dockerfilePath} ."
+                        sh "docker push ${imageTag}"
+                    }
+                }
+            }
+        }
+    }
+}
